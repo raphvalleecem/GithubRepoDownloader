@@ -1,54 +1,68 @@
+import logging
 import os
 import shutil
-from os.path import expanduser
+from http import HTTPStatus
+from pathlib import Path
 
 import requests
+from requests.auth import HTTPBasicAuth
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def download_repo_zip(user, repo_name, download_path, token):
+def download_repo_zip(user, repo_name, download_path, session):
+    """
+    Download a GitHub repository as a ZIP archive.
+
+    :param user: GitHub username of the repository owner.
+    :param repo_name: Name of the repository.
+    :param download_path: Local path where the ZIP file will be saved.
+    :param session: Requests session with authentication.
+    :return: The path to the downloaded ZIP file or None if download fails.
+    """
     zip_url = f"https://github.com/{user}/{repo_name}/archive/master.zip"
-    headers = {'Authorization': f'token {token}'}
-    response = requests.get(zip_url, headers=headers, stream=True)
+    response = session.get(zip_url, stream=True)
 
-    if response.status_code == 200:
-        zip_filename = f"{download_path}/{repo_name}.zip"
+    if response.status_code == requests.codes.ok:
+        zip_filename = download_path / f"{repo_name}.zip"
         with open(zip_filename, 'wb') as zip_file:
             shutil.copyfileobj(response.raw, zip_file)
         return zip_filename
     else:
-        print(f"Failed to download {repo_name}. Status code: {response.status_code}")
+        logger.error(f"Failed to download {repo_name}. Status code: {response.status_code}")
         return None
 
 
+def create_session(username, github_token):
+    session = requests.Session()
+    session.auth = HTTPBasicAuth(username, github_token)
+    return session
+
+
 def download_all_repos(username, download_path, github_token):
-    # Create the download directory if it doesn't exist
     os.makedirs(download_path, exist_ok=True)
 
-    # Get the list of repositories for the given user
-    api_url = f"https://api.github.com/user/repos"
-    headers = {'Authorization': f'token {github_token}'}
-    response = requests.get(api_url, headers=headers)
+    session = create_session(username, github_token)
 
-    if response.status_code == 200:
-        repos = response.json()
+    api_url = f"https://api.github.com/search/repositories?q=user:{username}"
+    response = session.get(api_url)
 
-        # Download each repository as a zip file
+    if response.status_code == HTTPStatus.OK:
+        repos = response.json()['items']
+
         for repo in repos:
             repo_name = repo['name']
-            print(f"Downloading {repo_name}...")
-            zip_filename = download_repo_zip(username, repo_name, download_path, github_token)
+            zip_filename = download_repo_zip(username, repo_name, download_path, session)
             if zip_filename:
-                print(f"{repo_name} downloaded to {zip_filename}")
-            else:
-                print(f"Failed to download {repo_name}.")
+                logger.info(f"{repo_name} downloaded to {zip_filename}")
     else:
-        print(f"Failed to retrieve repositories. Status code: {response.status_code}")
+        logger.error(f"Failed to retrieve repositories. Status code: {response.status_code}")
 
 
 if __name__ == "__main__":
-    username = "Tranzitron"
-    home = expanduser("~")
-    download_path = fr"{home}\Desktop\{username}_repos"
-    github_token = "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"
+    username = "raphvalleecem"
+    download_path = Path.home() / 'Desktop' / f"{username}_repos"
+    github_token = ""
 
     download_all_repos(username, download_path, github_token)
