@@ -35,12 +35,44 @@ def download_repo_zip(user, repo_name, download_path, session):
 
 
 def create_session(username, github_token):
+    """
+    Create a Requests session with GitHub authentication.
+
+    This function takes a GitHub username and a personal access token
+    (PAT) and returns a Requests session configured with HTTP basic
+    authentication using the provided credentials.
+
+    :param username: GitHub username for authentication.
+    :type username: str
+    :param github_token: Personal access token (PAT) for GitHub.
+    :type github_token: str
+    :return: A Requests session with GitHub authentication.
+    :rtype: requests.Session
+    """
     session = requests.Session()
     session.auth = HTTPBasicAuth(username, github_token)
     return session
 
 
 def download_all_repos(username, download_path, github_token):
+    """
+    Download all repositories of a GitHub user as ZIP archives.
+
+    This function takes a GitHub username, a local directory path for
+    saving downloaded ZIP files, and a personal access token (PAT) for
+    GitHub authentication. It creates a session, retrieves the user's
+    repositories using the GitHub API, and downloads each repository
+    as a ZIP archive.
+
+    :param username: GitHub username of the target user.
+    :type username: str
+    :param download_path: Local path to save downloaded ZIP files.
+    :type download_path: pathlib.Path
+    :param github_token: Personal access token (PAT) for GitHub.
+    :type github_token: str
+    :return: None
+    :rtype: None
+    """
     os.makedirs(download_path, exist_ok=True)
 
     session = create_session(username, github_token)
