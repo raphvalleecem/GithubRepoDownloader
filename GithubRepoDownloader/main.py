@@ -5,10 +5,30 @@ from http import HTTPStatus
 from pathlib import Path
 
 import requests
+from colorlog import ColoredFormatter
 from requests.auth import HTTPBasicAuth
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.INFO)
+
+# Define the colored formatter
+formatter = ColoredFormatter(
+    '%(log_color)s%(asctime)s [%(levelname)s] - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    log_colors={
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'black,bg_red',
+    }
+)
+
+# Create a console handler and set the formatter
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+
+# Add the console handler to the logger
+logger.addHandler(ch)
 
 
 def download_repo_zip(user, repo_name, download_path, session):
@@ -82,6 +102,10 @@ def download_all_repos(username, download_path, github_token):
 
     if response.status_code == HTTPStatus.OK:
         repos = response.json()['items']
+
+        if not github_token:
+            logger.warning("No GitHub Token was provided. Falling back to PUBLIC repository only.")
+            logger.warning("For PRIVATE repositories, add your GitHub Token.")
 
         for repo in repos:
             repo_name = repo['name']
