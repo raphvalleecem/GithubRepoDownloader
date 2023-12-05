@@ -1,11 +1,11 @@
 import logging
 import os
 import shutil
-from http import HTTPStatus
 from pathlib import Path
 
 import requests
 from colorlog import ColoredFormatter
+from requests import RequestException, Session, Response
 from requests.auth import HTTPBasicAuth
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 
-def download_repo_zip(user, repo_name, download_path, session):
+def download_repo_zip(user: str, repo_name: str, download_path: Path, session: Session):
     """
     Download a GitHub repository as a ZIP archive.
 
@@ -41,26 +41,23 @@ def download_repo_zip(user, repo_name, download_path, session):
     :param session: Requests session with authentication.
     :return: The path to the downloaded ZIP file or None if download fails.
     """
-    zip_url = f"https://github.com/{user}/{repo_name}/archive/master.zip"
-    response = session.get(zip_url, stream=True)
-
-    if response.status_code == requests.codes.ok:
-        zip_filename = download_path / f"{repo_name}.zip"
-        with open(zip_filename, 'wb') as zip_file:
-            shutil.copyfileobj(response.raw, zip_file)
-        return zip_filename
-    else:
-        logger.error(f"Failed to download {repo_name}. Status code: {response.status_code}")
+    zip_url: str = f"https://github.com/{user}/{repo_name}/archive/master.zip"
+    try:
+        response: Response = session.get(zip_url, stream=True)
+        response.raise_for_status()
+    except RequestException as exception:
+        logger.error(f"Failed to download {repo_name}. Error: {exception}")
         return None
 
+    zip_filename: Path = download_path / f"{repo_name}.zip"
+    with open(zip_filename, 'wb') as zip_file:
+        shutil.copyfileobj(response.raw, zip_file)
+    return zip_filename
 
-def create_session(username, github_token):
+
+def create_session(username: str, github_token: str):
     """
     Create a Requests session with GitHub authentication.
-
-    This function takes a GitHub username and a personal access token
-    (PAT) and returns a Requests session configured with HTTP basic
-    authentication using the provided credentials.
 
     :param username: GitHub username for authentication.
     :type username: str
@@ -69,12 +66,12 @@ def create_session(username, github_token):
     :return: A Requests session with GitHub authentication.
     :rtype: requests.Session
     """
-    session = requests.Session()
+    session: Session = requests.Session()
     session.auth = HTTPBasicAuth(username, github_token)
     return session
 
 
-def download_all_repos(username, download_path, github_token):
+def download_all_repos(username: str, download_path: Path, github_token: str):
     """
     Download all repositories of a GitHub user as ZIP archives.
 
@@ -91,34 +88,37 @@ def download_all_repos(username, download_path, github_token):
     :param github_token: Personal access token (PAT) for GitHub.
     :type github_token: str
     :return: None
-    :rtype: None
     """
     os.makedirs(download_path, exist_ok=True)
 
-    session = create_session(username, github_token)
+    session: Session = create_session(username, github_token)
 
-    api_url = f"https://api.github.com/search/repositories?q=user:{username}"
-    response = session.get(api_url)
+    api_url: str = f"https://api.github.com/search/repositories?q=user:{username}"
+    try:
+        response = session.get(api_url)
+        response.raise_for_status()
+    except RequestException as e:
+        logger.error(f"Failed to retrieve repositories. Error: {e}")
+        return
 
-    if response.status_code == HTTPStatus.OK:
-        repos = response.json()['items']
+    repos = response.json()['items']
 
-        if not github_token:
-            logger.warning("No GitHub Token was provided. Falling back to PUBLIC repository only.")
-            logger.warning("For PRIVATE repositories, add your GitHub Token.")
+    if not github_token:
+        logger.warning("No GitHub Token was provided. Falling back to PUBLIC repository only.")
+        logger.warning("For PRIVATE repositories, add your GitHub Token.")
 
-        for repo in repos:
-            repo_name = repo['name']
-            zip_filename = download_repo_zip(username, repo_name, download_path, session)
-            if zip_filename:
-                logger.info(f"{repo_name} downloaded to {zip_filename}")
-    else:
-        logger.error(f"Failed to retrieve repositories. Status code: {response.status_code}")
+    for repo in repos:
+        repo_name = repo.get('name')
+        if not repo_name:
+            continue
+        zip_filename = download_repo_zip(username, repo_name, download_path, session)
+        if zip_filename:
+            logger.info(f"{repo_name} downloaded to {zip_filename}")
 
 
 if __name__ == "__main__":
-    username = "raphvalleecem"
-    download_path = Path.home() / 'Desktop' / f"{username}_repos"
-    github_token = ""
+    username: str = "raphvalleecem"
+    download_path: Path = Path.home() / 'Desktop' / f"{username}_repos"
+    github_token: str = ""
 
     download_all_repos(username, download_path, github_token)
