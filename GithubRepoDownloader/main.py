@@ -1,9 +1,14 @@
 import logging
 import os
+import pathlib
+import re
 import shutil
+import sys
 from pathlib import Path
+from typing import Any
 
 import requests
+import toml
 from colorlog import ColoredFormatter
 from requests import RequestException, Session, Response
 from requests.auth import HTTPBasicAuth
@@ -29,6 +34,10 @@ ch.setFormatter(formatter)
 
 # Add the console handler to the logger
 logger.addHandler(ch)
+
+CONFIG_FILE_PATH: Path = Path("config.toml")
+# Regex's for validating GitHub token
+GITHUB_TOKEN_REGEX = re.compile(r'^(gh[ps]_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59})$')
 
 
 def download_repo_zip(user: str, repo_name: str, download_path: Path, session: Session):
@@ -116,9 +125,81 @@ def download_all_repos(username: str, download_path: Path, github_token: str):
             logger.info(f"{repo_name} downloaded to {zip_filename}")
 
 
-if __name__ == "__main__":
-    username: str = "raphvalleecem"
-    download_path: Path = Path.home() / 'Desktop' / f"{username}_repos"
-    github_token: str = ""
+def config_write(config):
+    """
+    Write the configuration to a file.
 
+    :param config: Configuration object.
+    :type config: dict
+    """
+    with open(CONFIG_FILE_PATH, "w") as config_file:
+        toml.dump(config, config_file)
+    logger.info(f"Configuration updated at {CONFIG_FILE_PATH}")
+
+
+def config_read() -> dict[str, Any]:
+    """
+    Read configuration from a file. If the file doesn't exist, create it with default values.
+
+    :return: Configuration object.
+    :rtype: dict
+    """
+    default_config = {
+        "github_username": "",
+        "github_token": "",
+        "download_path": str(Path.home() / 'Desktop' / 'GithubRepoDownloader_repos'),
+    }
+
+    if not CONFIG_FILE_PATH.is_file():
+        with open(CONFIG_FILE_PATH, "w") as config_file:
+            toml.dump(default_config, config_file)
+            logger.info(f"Default configuration created at {CONFIG_FILE_PATH}")
+
+    with open(CONFIG_FILE_PATH, "r") as config_file:
+        config: dict[str, Any] = toml.load(config_file)
+
+    return config
+
+
+def validate_github_token(github_token: str) -> bool:
+    """
+    Validate the GitHub token using the provided regex.
+
+    GitHub token validation regular expressions
+    https://gist.github.com/magnetikonline/073afe7909ffdd6f10ef06a00bc3bc88
+
+    :param github_token: GitHub personal access token.
+    :type github_token: str
+    :return: True if the token is valid, False otherwise.
+    :rtype: bool
+    """
+    return bool(GITHUB_TOKEN_REGEX.match(github_token))
+
+
+if __name__ == "__main__":
+    config: dict[str, Any] = config_read()
+
+    username: str = config["github_username"]
+    download_path: Path = Path(config["download_path"])
+    github_token: str = config["github_token"]
+
+    isError: bool = False
+
+    if not username:
+        logger.error("GitHub username is empty. Please provide a valid GitHub username.")
+        isError = True
+
+    if not download_path or not download_path.is_absolute():
+        logger.error("Download path is invalid. Please provide a valid absolute path.")
+        isError = True
+
+    if not validate_github_token(github_token):
+        logger.error("GitHub token is invalid. Please provide a valid GitHub token.")
+        isError = True
+
+    if isError:
+        sys.exit(1)
+
+    logger.info("Download Started")
     download_all_repos(username, download_path, github_token)
+    logger.info("Download Ended")
