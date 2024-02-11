@@ -54,8 +54,20 @@ def download_repo_zip(user: str, repo_name: str, download_path: Path, session: S
     try:
         response: Response = session.get(zip_url, stream=True)
         response.raise_for_status()
-    except RequestException as exception:
+    except requests.exceptions.HTTPError as http_error:
+        logger.error(f"HTTP Error while downloading {repo_name}. Status code: {http_error.response.status_code}")
+        return None
+    except requests.exceptions.ConnectionError as connection_error:
+        logger.error(f"Connection Error while downloading {repo_name}. Error: {connection_error}")
+        return None
+    except requests.exceptions.Timeout as timeout_error:
+        logger.error(f"Timeout Error while downloading {repo_name}. Error: {timeout_error}")
+        return None
+    except requests.exceptions.RequestException as exception:
         logger.error(f"Failed to download {repo_name}. Error: {exception}")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while downloading {repo_name}. Error: {e}")
         return None
 
     zip_filename: Path = download_path / f"{repo_name}.zip"
@@ -157,6 +169,22 @@ def config_read() -> dict[str, Any]:
 
     with open(CONFIG_FILE_PATH, "r") as config_file:
         config: dict[str, Any] = toml.load(config_file)
+
+    # Validate GitHub username
+    if not config["github_username"] or not re.match(r'^[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*$', config["github_username"]):
+        logger.error("GitHub username is invalid. Please provide a valid GitHub username.")
+        sys.exit(1)
+
+    # Validate GitHub token
+    if not validate_github_token(config["github_token"]):
+        logger.error("GitHub token is invalid. Please provide a valid GitHub token.")
+        sys.exit(1)
+
+    # Validate download path
+    download_path = Path(config["download_path"])
+    if not download_path.is_absolute():
+        logger.error("Download path is invalid. Please provide a valid absolute path.")
+        sys.exit(1)
 
     return config
 
