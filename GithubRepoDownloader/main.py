@@ -4,6 +4,7 @@ import pathlib
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +93,10 @@ def create_session(username: str, github_token: str):
     return session
 
 
+def current_milli_time():
+    return round(time.time() * 1000)
+
+
 def download_all_repos(username: str, download_path: Path, github_token: str):
     """
     Download all repositories of a GitHub user as ZIP archives.
@@ -128,10 +133,19 @@ def download_all_repos(username: str, download_path: Path, github_token: str):
         logger.warning("No GitHub Token was provided. Falling back to PUBLIC repository only.")
         logger.warning("For PRIVATE repositories, add your GitHub Token.")
 
+    current_time = current_milli_time()
+    min_delay = 500
     for repo in repos:
         repo_name = repo.get('name')
         if not repo_name:
+            logger.warning(f"Invalid name for repo: {repo}")
             continue
+        delta_time = current_milli_time() - current_time
+        if delta_time < min_delay:
+            sleep_time = (min_delay - delta_time) / 1000
+            logger.warning(f"Sleeping for: {sleep_time}")
+            time.sleep(sleep_time)
+        current_time = current_milli_time()
         zip_filename = download_repo_zip(username, repo_name, download_path, session)
         if zip_filename:
             logger.info(f"{repo_name} downloaded to {zip_filename}")
